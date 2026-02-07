@@ -42,20 +42,21 @@ All other Defender settings can be left as on as long:
 ### Command Line Options
 
 ```
-  -e, --engine      Scanning engine (default: Defender)
-                    Options: Defender, AMSI
-  
-  -f, --file        Analyze a file on disk
-  
-  -u, --url         Analyze a file from a URL
-  
-  -d, --directory   Analyze all files in a directory
-  
-  --debug           Enable debug output
-  
-  --version         Display version information
-  
-  --help            Display help message
+> threatcheck --help
+usage: threatcheck [-h] [-e {defender,amsi}] [-f FILE] [-u URL] [-d DIRECTORY] [--debug] [--version]
+
+Identify AV signatures in files
+
+options:
+  -h, --help            show this help message and exit
+  -e, --engine {defender,amsi}
+                        Scanning engine (default: defender)
+  -f, --file FILE       Analyze a file on disk
+  -u, --url URL         Analyze a file from a URL
+  -d, --directory DIRECTORY
+                        Analyze all files in a directory
+  --debug               Enable debug output
+  --version             show program's version number and exit
 ```
 
 ## Credits
