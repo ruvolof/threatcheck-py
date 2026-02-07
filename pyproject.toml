@@ -1,0 +1,48 @@
+[build-system]
+requires = ["setuptools>=45", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "threatcheck-py"
+version = "0.1.0"
+description = "Identify AV signatures in files using binary search."
+readme = "README.md"
+requires-python = ">=3.8"
+license = "GPL-3.0"
+license-files = ["LICENSE"]
+authors = [
+  {name = "Francesco Ruvolo", email = "security@werebug.com"}
+]
+keywords = ["security", "antivirus", "defender", "amsi", "signature", "detection"]
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Intended Audience :: Information Technology",
+  "Intended Audience :: System Administrators",
+  "Operating System :: Microsoft :: Windows",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.8",
+  "Programming Language :: Python :: 3.9",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Topic :: Security",
+]
+dependencies = [
+  "colorama>=0.4.4",
+  "requests>=2.25.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/ruvolof/threatcheck-py"
+Repository = "https://github.com/ruvolof/threatcheck-py"
+Issues = "https://github.com/ruvolof/threatcheck-py/issues"
+
+[project.scripts]
+threatcheck = "threatcheck.cli:main"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+packages = [
+  "threatcheck",
+  "threatcheck.scanners",
+]
