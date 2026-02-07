@@ -168,5 +168,9 @@ def main():
                                file_content,
                                args.engine.lower(),
                                args.debug)]
+  else:
+    Console.write_error(
+        'Specify either -d, -f or -u as a source. Type --help for more.')
+    sys.exit(1)
 
   print_summary(results)
