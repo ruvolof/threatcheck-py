@@ -9,6 +9,12 @@ Python port of [Rasta-Mouse's ThreatCheck](https://github.com/rasta-mouse/Threat
 
 ## Installation
 
+### From PyPi
+
+```
+pip install threatcheck-py
+```
+
 ### From Source
 
 ```bash
