@@ -9,6 +9,7 @@ from threatcheck import __version__
 from threatcheck.console import Console
 from threatcheck.scanners.defender import DefenderScanner
 from threatcheck.scanners.amsi import AmsiScanner
+from threatcheck.scanners.clamav import ClamAVScanner
 
 class ScanStatus(Enum):
   SUCCESS = 'success'
@@ -66,6 +67,8 @@ def initialize_scanner(engine: str,
     return DefenderScanner(debug=debug, file_bytes=file_bytes)
   elif engine == 'amsi':
     return AmsiScanner(debug=debug, file_bytes=file_bytes)
+  elif engine == 'clamav':
+    return ClamAVScanner(debug=debug, file_bytes=file_bytes)
   else:
     raise ValueError(f'Unknown engine: {engine}')
 
@@ -130,7 +133,7 @@ def parse_arguments():
       '-e', '--engine',
       type=str.lower,
       default='defender',
-      choices=['defender', 'amsi'],
+      choices=['defender', 'amsi', 'clamav'],
       help='Scanning engine (default: defender)')
   parser.add_argument(
       '-f', '--file',

@@ -81,7 +81,9 @@ class Scanner(ABC):
     
     self.malicious = True
     
-    Console.write_output(f'Target file size: {len(self.file_bytes)} bytes')
+    Console.write_output(
+        f'File is malicious. Size: {len(self.file_bytes)} '
+        f'bytes. Searching for signature...')
     
     split_array = self.file_bytes[:len(self.file_bytes) // 2]
     last_good = 0
