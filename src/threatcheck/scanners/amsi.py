@@ -2,7 +2,7 @@ import sys
 import ctypes
 from ctypes import c_void_p, c_uint, c_int, POINTER, byref
 from enum import IntEnum
-from threatcheck.scanners.base import Scanner
+from threatcheck.scanners.base import Scanner, ScanResult, ScanStatus
 from threatcheck.console import Console
 
 class AmsiResult(IntEnum):
@@ -61,10 +61,15 @@ class AmsiScanner(Scanner):
       self.cleanup()
       raise RuntimeError(f'AmsiOpenSession failed with code {result}')
   
-  def _scan_bytes(self, data):
+  def _scan_bytes(self, data, get_sig=False) -> ScanResult:
     """Scan a data split for threats"""
-    status = self._scan_buffer(data)
-    return status == AmsiResult.AMSI_RESULT_DETECTED
+    amsi_status = self._scan_buffer(data)
+    result = ScanResult()
+    if amsi_status >= AmsiResult.AMSI_RESULT_DETECTED:
+      result.status = ScanStatus.THREAT_FOUND
+    else:
+      result.status = ScanStatus.NO_THREAT_FOUND
+    return result
 
   def _scan_buffer(self, buffer, session=None):
     if session is None:

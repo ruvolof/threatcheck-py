@@ -2,9 +2,22 @@ import os
 import tempfile
 from abc import ABC, abstractmethod
 from pathlib import Path
+from enum import Enum
 
 from threatcheck.console import Console
 from threatcheck.helpers import hex_dump
+
+class ScanStatus(Enum):
+  NO_THREAT_FOUND = 0
+  THREAT_FOUND = 1
+  FILE_NOT_FOUND = 2
+  TIMEOUT = 3
+  ERROR = 4
+
+class ScanResult:
+  def __init__(self):
+    self.status = None
+    self.signature = None
 
 class Scanner(ABC):
   def __init__(self, file_bytes=None, debug=False):
@@ -69,21 +82,15 @@ class Scanner(ABC):
 
     return original_array[:new_size]
   
-  def _binary_split_loop(self, initial_scan_result):
+  def _binary_split_loop(self):
     """Common binary splitting logic.
     
     Searches the exact bytes where the signature ends by keeping track of the
     last known good bytes and splitting the remaining bytes in half.
-    """
-    if not initial_scan_result:
-      Console.write_output('No threat found!')
-      return
-    
-    self.malicious = True
-    
-    Console.write_output(
-        f'File is malicious. Size: {len(self.file_bytes)} '
-        f'bytes. Searching for signature...')
+    """  
+    if self.debug:
+      Console.write_debug(
+          f'Size: {len(self.file_bytes)} bytes. Searching for signature.')
     
     split_array = self.file_bytes[:len(self.file_bytes) // 2]
     last_good = 0
@@ -94,7 +101,7 @@ class Scanner(ABC):
       
       detection_result = self._scan_bytes(split_array)
       
-      if detection_result:
+      if detection_result.status == ScanStatus.THREAT_FOUND:
         if self.debug:
           Console.write_debug('Threat found, splitting')
         
@@ -108,15 +115,19 @@ class Scanner(ABC):
   
   def _start_file_scan(self):
     """Analyze file bytes with binary splitting"""
-    initial_threat = self._scan_bytes(self.file_bytes)
+    initial_status = self._scan_bytes(self.file_bytes, get_sig=True)
     
-    if self.debug:
-      Console.write_debug(f'Status value: {initial_threat}')
-    
-    self._binary_split_loop(initial_threat)
+    if initial_status.status == ScanStatus.THREAT_FOUND:
+      self.malicious = True
+      Console.write_threat(f'File is malicious.')
+      if initial_status.signature:
+        Console.write_threat(f'Signature: {initial_status.signature}')
+      self._binary_split_loop()
+    else:
+      Console.write_output('No threat found!')
   
   @abstractmethod
-  def _scan_bytes(self, data):
+  def _scan_bytes(self, data, get_sig=False):
     """Subclasses implement specific scan methods.
     
     Args:

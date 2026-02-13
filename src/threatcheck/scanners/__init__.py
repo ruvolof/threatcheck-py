@@ -7,5 +7,7 @@ __all__ = [
   'Scanner',
   'DefenderScanner',
   'AmsiScanner',
-  'ClamAVScanner'
+  'ClamAVScanner',
+  'ScanResult',
+  'ScanStatus'
 ]
