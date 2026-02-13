@@ -23,7 +23,29 @@ cd threatcheck-py
 pip install -e .
 ```
 
-## Test Environment Setup
+## Usage
+
+### Command Line Options
+
+```
+$ threatcheck --help
+usage: threatcheck [-h] [-e {defender,amsi,clamav}] [-f FILE] [-u URL] [-d DIRECTORY] [--debug] [--version]
+
+Identify AV signatures in files
+
+options:
+  -h, --help            show this help message and exit
+  -e {defender,amsi,clamav}, --engine {defender,amsi,clamav}
+                        Scanning engine (default: defender)
+  -f FILE, --file FILE  Analyze a file on disk
+  -u URL, --url URL     Analyze a file from a URL
+  -d DIRECTORY, --directory DIRECTORY
+                        Analyze all files in a directory
+  --debug               Enable debug output
+  --version             show program's version number and exit
+```
+
+## Defender Test Environment Setup
 
 It is recommended to force autosubmission of samples to never send them, or the amount of notification can be overwhelming. This can be forced through group policies:
 
@@ -32,32 +54,10 @@ It is recommended to force autosubmission of samples to never send them, or the 
 3) Double click on "Send file samples when further analysis is required"
 4) Set it to "Enabled" and in the bottom-left panel select "Never send"
 
-All other Defender settings can be left as on as long:
+All other Defender settings can be left on as long:
 
 1) There's a path exception in place for the original location of your samples (otherwise real-time protection will prevent the initial loading of the files).
 2) (Maybe?) The original location has to be on your C drive. In my experience Defender ignores exception for external drives and I run in problem 1 above.
-
-## Usage
-
-### Command Line Options
-
-```
-> threatcheck --help
-usage: threatcheck [-h] [-e {defender,amsi}] [-f FILE] [-u URL] [-d DIRECTORY] [--debug] [--version]
-
-Identify AV signatures in files
-
-options:
-  -h, --help            show this help message and exit
-  -e, --engine {defender,amsi}
-                        Scanning engine (default: defender)
-  -f, --file FILE       Analyze a file on disk
-  -u, --url URL         Analyze a file from a URL
-  -d, --directory DIRECTORY
-                        Analyze all files in a directory
-  --debug               Enable debug output
-  --version             show program's version number and exit
-```
 
 ## Credits
 
