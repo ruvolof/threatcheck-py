@@ -4,13 +4,18 @@ import subprocess
 from pathlib import Path
 from enum import Enum
 
-from threatcheck.scanners.base import Scanner, ScanResult, ScanStatus
+from threatcheck.scanners.scanner import ScanResult, ScanStatus
+from threatcheck.scanners.split_scanner import SplitScanner
 from threatcheck.console import Console
 
 
-class DefenderScanner(Scanner):
-  def __init__(self, file_bytes=None, debug=False):
-    super().__init__(file_bytes=file_bytes, debug=debug)
+class DefenderScanner(SplitScanner):
+  def __init__(self, file_bytes=None, debug=False, pid=None):
+    super().__init__(file_bytes=file_bytes, debug=debug, pid=pid)
+
+    if self.pid:
+      raise ValueError(
+          'Defender scanner does not support scanning process memory')
     
     if sys.platform != 'win32':
       raise RuntimeError(

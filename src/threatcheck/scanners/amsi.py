@@ -2,21 +2,27 @@ import sys
 import ctypes
 from ctypes import c_void_p, c_uint, c_int, POINTER, byref
 from enum import IntEnum
-from threatcheck.scanners.base import Scanner, ScanResult, ScanStatus
+from threatcheck.scanners.scanner import ScanResult, ScanStatus
+from threatcheck.scanners.split_scanner import SplitScanner
 from threatcheck.console import Console
+
 
 class AmsiResult(IntEnum):
   AMSI_RESULT_CLEAN = 0
   AMSI_RESULT_NOT_DETECTED = 1
   AMSI_RESULT_DETECTED = 32768
 
-class AmsiScanner(Scanner):
-  def __init__(self, file_bytes=None, debug=False,
+
+class AmsiScanner(SplitScanner):
+  def __init__(self, file_bytes=None, debug=False, pid=None,
       app_name='PowerShell_C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe_5.1.22621.2506'):
-    super().__init__(file_bytes=file_bytes, debug=debug)
+    super().__init__(file_bytes=file_bytes, debug=debug, pid=pid)
     
     self.amsi_context = None
     self.amsi_session = None
+
+    if self.pid:
+      raise ValueError('AMSI scanner does not support scanning process memory')
     
     if sys.platform != 'win32':
       raise RuntimeError(

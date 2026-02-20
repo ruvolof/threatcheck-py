@@ -10,6 +10,7 @@ from threatcheck.console import Console
 from threatcheck.scanners.defender import DefenderScanner
 from threatcheck.scanners.amsi import AmsiScanner
 from threatcheck.scanners.clamav import ClamAVScanner
+from threatcheck.scanners.yara_scanner import YaraScanner
 
 class ScanStatus(Enum):
   SUCCESS = 'success'
@@ -35,6 +36,7 @@ class ScanResult:
   def filename(self) -> str:
     return self.file_path.name
 
+
 def download_file_bytes(url):
   try:
     response = requests.get(url, timeout=30)
@@ -42,6 +44,7 @@ def download_file_bytes(url):
     return response.content
   except requests.RequestException as e:
     raise RuntimeError(f'Could not connect to URL: {e}')
+
 
 def list_files_in_directory(directory: Path) -> List[Path]:
   if not directory.exists():
@@ -56,28 +59,55 @@ def list_files_in_directory(directory: Path) -> List[Path]:
     sys.exit(1)
   return files
 
+
 def read_file_content(file_path: Path) -> bytes:
   with open(file_path, 'rb') as f:
     return f.read()
 
+
 def initialize_scanner(engine: str,
                        debug: bool,
-                       file_bytes: bytes = None):
+                       file_bytes: bytes = None,
+                       pid: int = None,
+                       rules_path: str = None):
   if engine == 'defender':
-    return DefenderScanner(debug=debug, file_bytes=file_bytes)
+    return DefenderScanner(debug=debug, file_bytes=file_bytes, pid=pid)
   elif engine == 'amsi':
-    return AmsiScanner(debug=debug, file_bytes=file_bytes)
+    return AmsiScanner(debug=debug, file_bytes=file_bytes, pid=pid)
   elif engine == 'clamav':
-    return ClamAVScanner(debug=debug, file_bytes=file_bytes)
+    return ClamAVScanner(debug=debug, file_bytes=file_bytes, pid=pid)
+  elif engine == 'yara':
+    return YaraScanner(debug=debug, file_bytes=file_bytes, pid=pid, rules_path=rules_path)
   else:
     raise ValueError(f'Unknown engine: {engine}')
+
+
+def scan_process(pid: int, engine: str, debug: bool, rules_path: str = None):
+  try:
+    scanner = initialize_scanner(engine, debug, pid=pid, rules_path=rules_path)
+    scanner.analyze()
+    if scanner.malicious:
+      status = ScanStatus.THREAT_FOUND
+    else:
+      status = ScanStatus.NO_THREAT
+    return ScanResult(file_path=f'Process_{pid}',
+                      status=status)
+  except Exception as e:
+    Console.write_error(f'Error scanning process {pid}: {e}')
+    return ScanResult(
+        file_path=f'Process_{pid}',
+        status=ScanStatus.ERROR,
+        error_message=str(e))
+
 
 def scan_file_bytes(file_path: Path,
                     file_bytes: bytes,
                     engine: str,
-                    debug: bool) -> ScanResult:
+                    debug: bool,
+                    rules_path: str = None) -> ScanResult:
   try:
-    scanner = initialize_scanner(engine, debug, file_bytes=file_bytes)
+    scanner = initialize_scanner(
+        engine, debug, file_bytes=file_bytes, rules_path=rules_path)
     scanner.analyze()
     if scanner.malicious:
       status = ScanStatus.THREAT_FOUND
@@ -93,6 +123,7 @@ def scan_file_bytes(file_path: Path,
         status=ScanStatus.ERROR,
         error_message=str(e))
 
+
 def process_files(file_list: List[Path], args) -> List[ScanResult]:
   results = []
 
@@ -104,10 +135,12 @@ def process_files(file_list: List[Path], args) -> List[ScanResult]:
     result = scan_file_bytes(file_path,
                              content,
                              args.engine.lower(),
-                             args.debug)
+                             args.debug,
+                             rules_path=args.rules)
     results.append(result)
 
   return results
+
 
 def print_summary(results: List[ScanResult]):
   success = sum(1 for r in results if r.success)
@@ -133,7 +166,7 @@ def parse_arguments():
       '-e', '--engine',
       type=str.lower,
       default='defender',
-      choices=['defender', 'amsi', 'clamav'],
+      choices=['defender', 'amsi', 'clamav', 'yara'],
       help='Scanning engine (default: defender)')
   parser.add_argument(
       '-f', '--file',
@@ -144,6 +177,11 @@ def parse_arguments():
   parser.add_argument(
       '-d', '--directory',
       help='Analyze all files in a directory')
+  parser.add_argument('-p', '--pid', help='Analyze a process by PID')
+  parser.add_argument(
+      '-r', '--rules',
+      help=('Path to YARA rules directory. Will recursively search for all '
+            '.yar and .yara files.'))
   parser.add_argument(
       '--debug',
       action='store_true',
@@ -170,10 +208,17 @@ def main():
     results = [scan_file_bytes(Path(args.url),
                                file_content,
                                args.engine.lower(),
-                               args.debug)]
+                               args.debug,
+                               rules_path=args.rules)]
+  elif args.pid:
+    results = [
+        scan_process(int(args.pid),
+                     args.engine.lower(),
+                     args.debug,
+                     rules_path=args.rules)]
   else:
     Console.write_error(
-        'Specify either -d, -f or -u as a source. Type --help for more.')
+        'Specify either -d, -f, -u or -p as a source. Type --help for more.')
     sys.exit(1)
 
   print_summary(results)

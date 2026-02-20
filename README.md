@@ -1,11 +1,25 @@
 # ThreatCheck-Py
 
-Python port of [Rasta-Mouse's ThreatCheck](https://github.com/rasta-mouse/ThreatCheck), a tool to identify AV signatures in files.
+Started as a python port of [Rasta-Mouse's ThreatCheck](https://github.com/rasta-mouse/ThreatCheck).
+
+A tool to find AV signatures in files.
 
 ## Requirements
 
 - Python 3.8 or higher
 - Windows OS (for Defender and AMSI scanners)
+
+## Supported Scanners
+
+### File Scanners
+
+- Defender
+- Amsi
+- Clamav
+
+### Process Scanners:
+
+- Yara
 
 ## Installation
 
@@ -29,18 +43,22 @@ pip install -e .
 
 ```
 $ threatcheck --help
-usage: threatcheck [-h] [-e {defender,amsi,clamav}] [-f FILE] [-u URL] [-d DIRECTORY] [--debug] [--version]
+usage: threatcheck [-h] [-e {defender,amsi,clamav,yara}] [-f FILE] [-u URL] [-d DIRECTORY] [-p PID] [-r RULES]
+                   [--debug] [--version]
 
 Identify AV signatures in files
 
 options:
   -h, --help            show this help message and exit
-  -e {defender,amsi,clamav}, --engine {defender,amsi,clamav}
+  -e {defender,amsi,clamav,yara}, --engine {defender,amsi,clamav,yara}
                         Scanning engine (default: defender)
   -f FILE, --file FILE  Analyze a file on disk
   -u URL, --url URL     Analyze a file from a URL
   -d DIRECTORY, --directory DIRECTORY
                         Analyze all files in a directory
+  -p PID, --pid PID     Analyze a process by PID
+  -r RULES, --rules RULES
+                        Path to YARA rules directory. Will recursively search for all .yar and .yara files.
   --debug               Enable debug output
   --version             show program's version number and exit
 ```
@@ -61,7 +79,7 @@ All other Defender settings can be left on as long:
 
 ## Credits
 
-- Original ThreatCheck by [Rasta-Mouse](https://github.com/rasta-mouse/ThreatCheck)
+- Original ThreatCheck by [Rasta-Mouse](https://github.com/rasta-mouse/ThreatCheck).
 
 ## Contributing
 
