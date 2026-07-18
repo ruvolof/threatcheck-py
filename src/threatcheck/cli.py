@@ -2,39 +2,30 @@ import sys
 import argparse
 import requests
 from pathlib import Path
-from dataclasses import dataclass
-from typing import Optional, List
-from enum import Enum
+from typing import List
 from threatcheck import __version__
 from threatcheck.console import Console
+from threatcheck.helpers import hex_dump
+from threatcheck.scanners import ScanResult, ScanStatus
 from threatcheck.scanners.defender import DefenderScanner
 from threatcheck.scanners.amsi import AmsiScanner
 from threatcheck.scanners.clamav import ClamAVScanner
 from threatcheck.scanners.yara_scanner import YaraScanner
 
-class ScanStatus(Enum):
-  SUCCESS = 'success'
-  NO_THREAT = 'no_threat'
-  THREAT_FOUND = 'threat_found'
-  ERROR = 'error'
-  SKIPPED = 'skipped'
 
-@dataclass
-class ScanResult:
-  file_path: Path
-  status: ScanStatus
-  error_message: Optional[str] = None
-  file_size: Optional[int] = None
-
-  @property
-  def success(self) -> bool:
-    return self.status in (ScanStatus.SUCCESS,
-                           ScanStatus.NO_THREAT,
-                           ScanStatus.THREAT_FOUND)
-
-  @property
-  def filename(self) -> str:
-    return self.file_path.name
+def report_result(result: ScanResult):
+  if result.status == ScanStatus.THREAT_FOUND:
+    Console.write_threat('File is malicious.')
+    if result.signature:
+      Console.write_threat(f'Signature: {result.signature}')
+    if result.identified:
+      Console.write_threat(
+          f'Identified end of bad bytes at offset 0x{result.end_offset:X}')
+      hex_dump(result.offending_bytes, result.end_offset)
+    else:
+      Console.write_error('File is malicious, but couldn\'t identify bad bytes')
+  elif result.status == ScanStatus.NO_THREAT_FOUND:
+    Console.write_output('No threat found!')
 
 
 def download_file_bytes(url):
@@ -85,19 +76,18 @@ def initialize_scanner(engine: str,
 def scan_process(pid: int, engine: str, debug: bool, rules_path: str = None):
   try:
     scanner = initialize_scanner(engine, debug, pid=pid, rules_path=rules_path)
-    scanner.analyze()
-    if scanner.malicious:
-      status = ScanStatus.THREAT_FOUND
-    else:
-      status = ScanStatus.NO_THREAT
-    return ScanResult(file_path=f'Process_{pid}',
-                      status=status)
+    result = scanner.analyze()
+    result.file_path = f'Process_{pid}'
+    if not scanner.self_reports:
+      report_result(result)
+    return result
   except Exception as e:
     Console.write_error(f'Error scanning process {pid}: {e}')
-    return ScanResult(
-        file_path=f'Process_{pid}',
-        status=ScanStatus.ERROR,
-        error_message=str(e))
+    result = ScanResult()
+    result.status = ScanStatus.ERROR
+    result.file_path = f'Process_{pid}'
+    result.error_message = str(e)
+    return result
 
 
 def scan_file_bytes(file_path: Path,
@@ -108,20 +98,19 @@ def scan_file_bytes(file_path: Path,
   try:
     scanner = initialize_scanner(
         engine, debug, file_bytes=file_bytes, rules_path=rules_path)
-    scanner.analyze()
-    if scanner.malicious:
-      status = ScanStatus.THREAT_FOUND
-    else:
-      status = ScanStatus.NO_THREAT
-    return ScanResult(file_path=file_path,
-                      status=status,
-                      file_size=len(file_bytes))
+    result = scanner.analyze()
+    result.file_path = file_path
+    result.file_size = len(file_bytes)
+    if not scanner.self_reports:
+      report_result(result)
+    return result
   except Exception as e:
     Console.write_error(f'Error scanning {file_path.name}: {e}')
-    return ScanResult(
-        file_path=file_path,
-        status=ScanStatus.ERROR,
-        error_message=str(e))
+    result = ScanResult()
+    result.status = ScanStatus.ERROR
+    result.file_path = file_path
+    result.error_message = str(e)
+    return result
 
 
 def process_files(file_list: List[Path], args) -> List[ScanResult]:

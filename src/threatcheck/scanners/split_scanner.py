@@ -2,7 +2,6 @@ from abc import ABC, abstractmethod
 
 from threatcheck.scanners.scanner import Scanner, ScanStatus, ScanResult
 from threatcheck.console import Console
-from threatcheck.helpers import hex_dump
 
 
 class SplitScanner(Scanner):
@@ -11,16 +10,17 @@ class SplitScanner(Scanner):
 
   def _start_file_scan(self):
     """Analyze file bytes with binary splitting"""
-    initial_status = self._scan_bytes(self.file_bytes, get_sig=True)
-    
-    if initial_status.status == ScanStatus.THREAT_FOUND:
-      self.malicious = True
-      Console.write_threat(f'File is malicious.')
-      if initial_status.signature:
-        Console.write_threat(f'Signature: {initial_status.signature}')
-      self._binary_split_loop()
-    else:
-      Console.write_output('No threat found!')
+    result = ScanResult()
+    initial_result = self._scan_bytes(self.file_bytes, get_sig=True)
+
+    if initial_result.status != ScanStatus.THREAT_FOUND:
+      result.status = ScanStatus.NO_THREAT_FOUND
+      return result
+
+    result.status = ScanStatus.THREAT_FOUND
+    result.signature = initial_result.signature
+    self._binary_split_loop(result)
+    return result
 
   def _start_process_scan(self):
     """Analyze process memory with binary splitting"""
@@ -30,73 +30,74 @@ class SplitScanner(Scanner):
   @abstractmethod
   def _scan_bytes(self, data, get_sig=False):
     """Subclasses implement specific scan methods.
-    
+
     Args:
         data: The bytes to scan
-        
+        get_sig: When True, populate `signature` on the returned result
+
     Returns:
-        bool: True if threat detected, False otherwise
+        ScanResult: with at least `status` set, and `signature` when
+        `get_sig=True` and a threat was detected.
     """
     pass
 
-  def _half_splitter(self, original_array, last_good):
+  def _half_splitter(self, original_array, last_good, result):
     """Splits the array in half, keeping the first half.
-    Called when a threat is found to reduce the data size."""
+    Called when a threat is found to reduce the data size.
+
+    Returns (split_array, complete)."""
     split_size = (len(original_array) - last_good) // 2 + last_good
     split_array = original_array[:split_size]
+    complete = False
 
     if len(original_array) == split_size + 1:
-      msg = f'Identified end of bad bytes at offset 0x{len(original_array):X}'
-      Console.write_threat(msg)
-
       offending_size = min(len(original_array), 256)
-      offending_bytes = original_array[-offending_size:]
+      result.end_offset = len(original_array)
+      result.offending_bytes = original_array[-offending_size:]
+      result.identified = True
+      complete = True
 
-      hex_dump(offending_bytes, len(original_array))
-      self.complete = True
-
-    return split_array
+    return split_array, complete
 
   def _overshot(self, original_array, split_array_size):
-    """Called when no threat is found to increase the data size."""
+    """Called when no threat is found to increase the data size.
+
+    Returns (new_array, complete)."""
     new_size = (len(original_array) - split_array_size) // 2 + split_array_size
+    complete = new_size == len(original_array) - 1
+    return original_array[:new_size], complete
 
-    if new_size == len(original_array) - 1:
-      self.complete = True
-
-      if self.malicious:
-        Console.write_error('File is malicious, but couldn\'t identify bad bytes')
-
-    return original_array[:new_size]
-  
-  def _binary_split_loop(self):
+  def _binary_split_loop(self, result):
     """Common binary splitting logic.
-    
+
     Searches the exact bytes where the signature ends by keeping track of the
     last known good bytes and splitting the remaining bytes in half.
-    """  
+    """
     if self.debug:
       Console.write_debug(
           f'Size: {len(self.file_bytes)} bytes. Searching for signature.')
-    
+
     split_array = self.file_bytes[:len(self.file_bytes) // 2]
     last_good = 0
-    
-    while not self.complete:
+    complete = False
+
+    while not complete:
       if self.debug:
         Console.write_debug(f'Testing {len(split_array)} bytes')
-      
+
       detection_result = self._scan_bytes(split_array)
-      
+
       if detection_result.status == ScanStatus.THREAT_FOUND:
         if self.debug:
           Console.write_debug('Threat found, splitting')
-        
-        split_array = self._half_splitter(split_array, last_good)
+
+        split_array, complete = self._half_splitter(
+            split_array, last_good, result)
       else:
         if self.debug:
           Console.write_debug('No threat found, increasing size')
-        
+
         last_good = len(split_array)
-        split_array = self._overshot(self.file_bytes, len(split_array))
+        split_array, complete = self._overshot(
+            self.file_bytes, len(split_array))
 

@@ -10,6 +10,10 @@ from threatcheck.console import Console
 
 
 class YaraScanner(Scanner):
+  # TODO: Improve YaraScanner interface to properly return ScanResult rather
+  # than self-reporting.
+  self_reports = True
+
   def __init__(self, file_bytes=None, debug=False, pid=None, rules_path=None):
     super().__init__(file_bytes=file_bytes, debug=debug, pid=pid)
 
@@ -77,7 +81,6 @@ class YaraScanner(Scanner):
       return result
 
     result.status = ScanStatus.THREAT_FOUND
-    self.malicious = True
     Console.write_threat(f'YARA matches found: {len(matches)}')
     for match in matches:
       print('\n')
