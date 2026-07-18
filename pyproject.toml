@@ -33,6 +33,13 @@ dependencies = [
   "yara-python>=4.5.0",
 ]
 
+[project.optional-dependencies]
+test = ["pytest>=7"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra"
+
 [project.urls]
 Homepage = "https://github.com/ruvolof/threatcheck-py"
 Repository = "https://github.com/ruvolof/threatcheck-py"
