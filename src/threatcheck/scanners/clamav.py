@@ -7,6 +7,24 @@ from threatcheck.scanners.split_scanner import SplitScanner
 from threatcheck.console import Console
 
 
+def _parse_clamav_signature(stdout):
+  """Parse clamscan/clamdscan stdout and return the signature name, or None.
+
+  ClamAV output format: {file_path}: {signature_name} FOUND
+  Example: /tmp/file.exe: Win.Trojan.Agent-1234 FOUND
+  """
+  for line in stdout.split('\n'):
+    if ' FOUND' not in line:
+      continue
+    parts = line.split(': ')
+    if len(parts) < 2:
+      continue
+    sig_part = parts[1]
+    if ' FOUND' in sig_part:
+      return sig_part.replace(' FOUND', '').strip()
+  return None
+
+
 class ClamAVScanner(SplitScanner):
   def __init__(self, file_bytes=None, debug=False, pid=None):
     super().__init__(file_bytes=file_bytes, debug=debug, pid=pid)
@@ -79,18 +97,8 @@ class ClamAVScanner(SplitScanner):
       elif process.returncode == 1:
         result.status = ScanStatus.THREAT_FOUND
         if get_sig:
-          output = stdout.decode('utf-8', errors='ignore')
-          # ClamAV output format: {file_path}: {signature_name} FOUND
-          # Example: /tmp/file.exe: Win.Trojan.Agent-1234 FOUND
-          for line in output.split('\n'):
-            if ' FOUND' in line:
-              # Extract signature between ': ' and ' FOUND'
-              parts = line.split(': ')
-              if len(parts) >= 2:
-                sig_part = parts[1]
-                if ' FOUND' in sig_part:
-                  result.signature = sig_part.replace(' FOUND', '').strip()
-                  break
+          result.signature = _parse_clamav_signature(
+              stdout.decode('utf-8', errors='ignore'))
       else:
         result.status = ScanStatus.ERROR
       

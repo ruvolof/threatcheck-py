@@ -21,7 +21,7 @@ def report_result(result: ScanResult):
     if result.identified:
       Console.write_threat(
           f'Identified end of bad bytes at offset 0x{result.end_offset:X}')
-      hex_dump(result.offending_bytes, result.end_offset)
+      print(hex_dump(result.offending_bytes, result.end_offset))
     else:
       Console.write_error('File is malicious, but couldn\'t identify bad bytes')
   elif result.status == ScanStatus.NO_THREAT_FOUND:

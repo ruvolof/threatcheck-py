@@ -9,6 +9,25 @@ from threatcheck.scanners.split_scanner import SplitScanner
 from threatcheck.console import Console
 
 
+def _parse_defender_signature(stdout):
+  """Parse MpCmdRun.exe stdout and return the signature name, or None.
+
+  Example output from Defender:
+    <===========================LIST OF DETECTED THREATS==========================>
+    ----------------------------- Threat information ------------------------------
+    Threat                  : Trojan:Win64/Meterpreter!pz
+    Resources               : 1 total
+        file                : C:\\Temp\\File.exe
+  """
+  for line in stdout.split('\n'):
+    if line.startswith('Threat'):
+      parts = line.split(':', maxsplit=1)
+      if len(parts) == 2:
+        return parts[1].strip()
+      return None
+  return None
+
+
 class DefenderScanner(SplitScanner):
   def __init__(self, file_bytes=None, debug=False, pid=None):
     super().__init__(file_bytes=file_bytes, debug=debug, pid=pid)
@@ -71,19 +90,8 @@ class DefenderScanner(SplitScanner):
       elif process.returncode == 2:
         result.status = ScanStatus.THREAT_FOUND
         if get_sig:
-          # Example output from Defender
-          # <===========================LIST OF DETECTED THREATS==========================>
-          # ----------------------------- Threat information ------------------------------
-          # Threat                  : Trojan:Win64/Meterpreter!pz
-          # Resources               : 1 total
-          #     file                : C:\Temp\File.exe
-          output = stdout.decode('utf-8', errors='ignore')
-          for line in output.split('\n'):
-            if line.startswith('Threat'):
-              parts = line.split(':', maxsplit=1)
-              if len(parts) == 2:
-                result.signature = parts[1].strip()
-              break
+          result.signature = _parse_defender_signature(
+              stdout.decode('utf-8', errors='ignore'))
       else:
         result.status = ScanStatus.ERROR
       
