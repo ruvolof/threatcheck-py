@@ -13,19 +13,41 @@ from threatcheck.scanners.clamav import ClamAVScanner
 from threatcheck.scanners.yara_scanner import YaraScanner
 
 
+def _report_yara_matches(matches):
+  Console.write_threat(f'YARA matches found: {len(matches)}')
+  for match in matches:
+    print()
+    Console.write_threat(f'Rule: {match.rule}')
+    for string in match.strings:
+      hex_esc = ''.join(f'\\x{c:02x}' for c in string.matched_data)
+      if string.identifier:
+        Console.write_threat(
+            f'\t{string.identifier} Offset: 0x{string.offset:X} '
+            f'Match: b"{hex_esc}" -> {string.matched_data}')
+      else:
+        Console.write_threat(
+            f'Offset: 0x{string.offset:X} Match: b"{hex_esc}"')
+
+
 def report_result(result: ScanResult):
-  if result.status == ScanStatus.THREAT_FOUND:
-    Console.write_threat('File is malicious.')
-    if result.signature:
-      Console.write_threat(f'Signature: {result.signature}')
-    if result.identified:
-      Console.write_threat(
-          f'Identified end of bad bytes at offset 0x{result.end_offset:X}')
-      print(hex_dump(result.offending_bytes, result.end_offset))
-    else:
-      Console.write_error('File is malicious, but couldn\'t identify bad bytes')
-  elif result.status == ScanStatus.NO_THREAT_FOUND:
+  if result.status == ScanStatus.NO_THREAT_FOUND:
     Console.write_output('No threat found!')
+    return
+  if result.status != ScanStatus.THREAT_FOUND:
+    return
+
+  Console.write_threat('File is malicious.')
+  if result.signature:
+    Console.write_threat(f'Signature: {result.signature}')
+
+  if result.matches:
+    _report_yara_matches(result.matches)
+  elif result.identified:
+    Console.write_threat(
+        f'Identified end of bad bytes at offset 0x{result.end_offset:X}')
+    print(hex_dump(result.offending_bytes, result.end_offset))
+  else:
+    Console.write_error('File is malicious, but couldn\'t identify bad bytes')
 
 
 def download_file_bytes(url):
@@ -78,8 +100,7 @@ def scan_process(pid: int, engine: str, debug: bool, rules_path: str = None):
     scanner = initialize_scanner(engine, debug, pid=pid, rules_path=rules_path)
     result = scanner.analyze()
     result.file_path = f'Process_{pid}'
-    if not scanner.self_reports:
-      report_result(result)
+    report_result(result)
     return result
   except Exception as e:
     Console.write_error(f'Error scanning process {pid}: {e}')
@@ -101,8 +122,7 @@ def scan_file_bytes(file_path: Path,
     result = scanner.analyze()
     result.file_path = file_path
     result.file_size = len(file_bytes)
-    if not scanner.self_reports:
-      report_result(result)
+    report_result(result)
     return result
   except Exception as e:
     Console.write_error(f'Error scanning {file_path.name}: {e}')

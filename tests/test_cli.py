@@ -7,6 +7,7 @@ import requests
 
 from threatcheck import cli
 from threatcheck.scanners.scanner import ScanResult, ScanStatus
+from threatcheck.scanners.yara_scanner import YaraMatch, YaraStringMatch
 
 
 class TestDownloadFileBytes:
@@ -99,6 +100,53 @@ class TestReportResult:
     captured = capsys.readouterr()
     assert captured.out == ''
     assert captured.err == ''
+
+  def test_yara_matches_render_rule_identifier_offset_and_hex(self, capsys):
+    r = ScanResult()
+    r.status = ScanStatus.THREAT_FOUND
+    r.matches = [
+        YaraMatch(rule='Detect_X', strings=[
+            YaraStringMatch(identifier='$a', offset=0x10, matched_data=b'BAD'),
+        ]),
+    ]
+    cli.report_result(r)
+    out = capsys.readouterr().out
+    assert 'malicious' in out
+    assert 'YARA matches found: 1' in out
+    assert 'Rule: Detect_X' in out
+    assert '$a Offset: 0x10' in out
+    assert '\\x42\\x41\\x44' in out
+
+  def test_yara_matches_render_multi_rule_and_multi_instance(self, capsys):
+    r = ScanResult()
+    r.status = ScanStatus.THREAT_FOUND
+    r.matches = [
+        YaraMatch(rule='RuleA', strings=[
+            YaraStringMatch(identifier='$a', offset=0x10, matched_data=b'X'),
+            YaraStringMatch(identifier='$a', offset=0x40, matched_data=b'X'),
+        ]),
+        YaraMatch(rule='RuleB', strings=[
+            YaraStringMatch(identifier='$b', offset=0x80, matched_data=b'Y'),
+        ]),
+    ]
+    cli.report_result(r)
+    out = capsys.readouterr().out
+    assert 'YARA matches found: 2' in out
+    assert 'Rule: RuleA' in out and 'Rule: RuleB' in out
+    assert '0x10' in out and '0x40' in out and '0x80' in out
+
+  def test_yara_match_without_identifier_omits_prefix(self, capsys):
+    r = ScanResult()
+    r.status = ScanStatus.THREAT_FOUND
+    r.matches = [
+        YaraMatch(rule='R', strings=[
+            YaraStringMatch(identifier='', offset=0x20, matched_data=b'x'),
+        ]),
+    ]
+    cli.report_result(r)
+    out = capsys.readouterr().out
+    assert 'Offset: 0x20 Match: b"\\x78"' in out
+    assert '\t' not in out
 
 
 class TestPrintSummary:

@@ -1,7 +1,8 @@
 import pytest
 
 from threatcheck.scanners.scanner import ScanStatus
-from threatcheck.scanners.yara_scanner import YaraScanner
+from threatcheck.scanners.yara_scanner import (
+    YaraScanner, YaraMatch, YaraStringMatch)
 
 
 MARKER = b'MALICIOUS_MARKER_XYZ'
@@ -65,24 +66,55 @@ class TestCompileRules:
 
 
 class TestStartFileScan:
-  def test_matching_input_returns_threat_found(self, rules_dir, capsys):
+  def test_matching_input_returns_threat_found_with_populated_matches(
+      self, rules_dir, capsys):
     payload = b'benign junk ' + MARKER + b' trailing bytes'
     scanner = YaraScanner(file_bytes=payload, rules_path=str(rules_dir))
-    result = scanner._start_file_scan()
-    assert result.status == ScanStatus.THREAT_FOUND
-    # YaraScanner self-reports; drain the captured output so it doesn't leak.
+    # Drain any compile-time output before scanning, so the silence assertion
+    # below only covers what _start_file_scan itself emits.
     capsys.readouterr()
+    result = scanner._start_file_scan()
 
-  def test_non_matching_input_returns_no_threat(self, rules_dir, capsys):
+    assert result.status == ScanStatus.THREAT_FOUND
+    assert result.matches is not None and len(result.matches) == 1
+    match = result.matches[0]
+    assert isinstance(match, YaraMatch)
+    assert match.rule == 'Detect_Marker'
+    assert len(match.strings) == 1
+    string = match.strings[0]
+    assert isinstance(string, YaraStringMatch)
+    assert string.identifier == '$m'
+    assert string.matched_data == MARKER
+    assert string.offset == payload.index(MARKER)
+
+    captured = capsys.readouterr()
+    assert captured.out == '' and captured.err == ''
+
+  def test_non_matching_input_returns_no_threat_with_matches_none(
+      self, rules_dir, capsys):
     scanner = YaraScanner(file_bytes=b'plain harmless content',
                           rules_path=str(rules_dir))
-    result = scanner._start_file_scan()
-    assert result.status == ScanStatus.NO_THREAT_FOUND
     capsys.readouterr()
+    result = scanner._start_file_scan()
 
-  def test_nested_rule_directory_is_walked(self, rules_dir, capsys):
+    assert result.status == ScanStatus.NO_THREAT_FOUND
+    assert result.matches is None
+    captured = capsys.readouterr()
+    assert captured.out == '' and captured.err == ''
+
+  def test_nested_rule_directory_is_walked(self, rules_dir):
     scanner = YaraScanner(file_bytes=b'NESTED_MARKER_ABC in payload',
                           rules_path=str(rules_dir))
     result = scanner._start_file_scan()
     assert result.status == ScanStatus.THREAT_FOUND
-    capsys.readouterr()
+    assert [m.rule for m in result.matches] == ['Detect_Nested']
+
+  def test_multiple_rules_matching_produce_multiple_match_entries(
+      self, rules_dir):
+    payload = MARKER + b' and NESTED_MARKER_ABC together'
+    scanner = YaraScanner(file_bytes=payload, rules_path=str(rules_dir))
+    result = scanner._start_file_scan()
+
+    assert result.status == ScanStatus.THREAT_FOUND
+    rules_matched = {m.rule for m in result.matches}
+    assert rules_matched == {'Detect_Marker', 'Detect_Nested'}

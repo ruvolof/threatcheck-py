@@ -6,7 +6,7 @@ from threatcheck.scanners import ScanResult, ScanStatus
 from threatcheck.scanners.defender import DefenderScanner
 from threatcheck.scanners.amsi import AmsiScanner
 from threatcheck.scanners.clamav import ClamAVScanner
-from threatcheck.scanners.yara_scanner import YaraScanner
+from threatcheck.scanners.yara_scanner import YaraScanner, YaraMatch, YaraStringMatch
 
 __all__ = [
   'ScanResult',
@@ -14,5 +14,7 @@ __all__ = [
   'DefenderScanner',
   'AmsiScanner',
   'ClamAVScanner',
-  'YaraScanner'
+  'YaraScanner',
+  'YaraMatch',
+  'YaraStringMatch'
 ]

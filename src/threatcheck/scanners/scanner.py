@@ -20,6 +20,7 @@ class ScanResult:
     self.offending_bytes = None
     self.end_offset = None
     self.identified = False
+    self.matches = None
     self.file_path = None
     self.file_size = None
     self.error_message = None
@@ -33,11 +34,6 @@ class ScanResult:
     return self.status in (ScanStatus.NO_THREAT_FOUND, ScanStatus.THREAT_FOUND)
 
 class Scanner(ABC):
-  # Indicates wether the scanner prints to stdout on its own. Ideally, scanners
-  # should not print to stdout and instead return a ScanResult object, but some
-  # scanners (like Yara) have their own logging and printing mechanisms.
-  self_reports = False
-
   def __init__(self, file_bytes=None, debug=False, pid=None):
     if not file_bytes and not pid:
       raise ValueError('file_bytes or pid must be provided')

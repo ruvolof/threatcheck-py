@@ -9,11 +9,20 @@ from threatcheck.scanners.scanner import Scanner, ScanResult, ScanStatus
 from threatcheck.console import Console
 
 
-class YaraScanner(Scanner):
-  # TODO: Improve YaraScanner interface to properly return ScanResult rather
-  # than self-reporting.
-  self_reports = True
+class YaraStringMatch:
+  def __init__(self, identifier, offset, matched_data):
+    self.identifier = identifier
+    self.offset = offset
+    self.matched_data = matched_data
 
+
+class YaraMatch:
+  def __init__(self, rule, strings):
+    self.rule = rule
+    self.strings = strings
+
+
+class YaraScanner(Scanner):
   def __init__(self, file_bytes=None, debug=False, pid=None, rules_path=None):
     super().__init__(file_bytes=file_bytes, debug=debug, pid=pid)
 
@@ -72,58 +81,30 @@ class YaraScanner(Scanner):
     except Exception as e:
       raise RuntimeError(f'Failed to compile combined yara rules: {e}')
 
-  def _report_matches(self, matches):
-    """Format and output yara matches."""
+  def _build_result(self, matches):
     result = ScanResult()
     if not matches:
       result.status = ScanStatus.NO_THREAT_FOUND
-      Console.write_output('No threat found!')
       return result
 
     result.status = ScanStatus.THREAT_FOUND
-    Console.write_threat(f'YARA matches found: {len(matches)}')
+    result.matches = []
     for match in matches:
-      print('\n')
-      Console.write_threat(f'Rule: {match.rule}')
+      strings = []
       for string_match in match.strings:
-        identifier = getattr(string_match, 'identifier', None)
-        # sm.instances is a list of StringMatchInstance
-        instances = getattr(string_match, 'instances', [])
-        for instance in instances:
-          # extract offset and matched bytes
-          offset = getattr(instance, 'offset', None)
-          data = instance.matched_data
-          hex_esc = ''.join(f'\\x{c:02x}' for c in data)
-          if identifier:
-            Console.write_threat(f'\t{identifier} Offset: 0x{offset:X} Match: b"{hex_esc}" -> {data}')
-          else:
-            Console.write_threat(f'Offset: 0x{offset:X} Match: b"{hex_esc}"')
+        for instance in string_match.instances:
+          strings.append(YaraStringMatch(
+              identifier=string_match.identifier,
+              offset=instance.offset,
+              matched_data=instance.matched_data))
+      result.matches.append(YaraMatch(rule=match.rule, strings=strings))
 
     return result
 
   def _start_file_scan(self):
-    # Use yara to match bytes directly
-    try:
-      matches = self.compiled_rules.match(data=self.file_bytes)
-      res = self._report_matches(matches)
-      return res
-    except Exception as e:
-      Console.write_error(f'YARA file scan failed: {e}')
-      r = ScanResult()
-      r.status = ScanStatus.ERROR
-      return r
+    matches = self.compiled_rules.match(data=self.file_bytes)
+    return self._build_result(matches)
 
   def _start_process_scan(self):
-    try:
-      matches = self.compiled_rules.match(pid=int(self.pid))
-      return self._report_matches(matches)
-    except yara.Error as e:
-      Console.write_error(f'YARA process scan failed: {e}')
-      r = ScanResult()
-      r.status = ScanStatus.ERROR
-      return r
-    except Exception as e:
-      Console.write_error(f'Unexpected error scanning process: {e}')
-      r = ScanResult()
-      r.status = ScanStatus.ERROR
-      return r
+    matches = self.compiled_rules.match(pid=int(self.pid))
+    return self._build_result(matches)
