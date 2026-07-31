@@ -4,7 +4,6 @@ from ctypes import c_void_p, c_uint, c_int, POINTER, byref
 from enum import IntEnum
 from threatcheck.scanners.scanner import ScanResult, ScanStatus
 from threatcheck.scanners.split_scanner import SplitScanner
-from threatcheck.console import Console
 
 
 class AmsiResult(IntEnum):
@@ -92,8 +91,7 @@ class AmsiScanner(SplitScanner):
     )
 
     if ret != 0:
-      Console.write_error(f'AmsiScanBuffer failed with code {ret}')
-      return AmsiResult.AMSI_RESULT_CLEAN
+      raise RuntimeError(f'AmsiScanBuffer failed with code {ret}')
 
     return AmsiResult(result.value)
 
