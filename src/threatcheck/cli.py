@@ -189,7 +189,13 @@ def parse_arguments():
       action='version',
       version=f'%(prog)s {__version__}')
 
-  return parser.parse_args()
+  args = parser.parse_args()
+
+  if args.rules is not None and args.engine != 'yara':
+    parser.error(
+        f'--rules is only valid with --engine yara (got --engine {args.engine})')
+
+  return args
 
 
 def main():

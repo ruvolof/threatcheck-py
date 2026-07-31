@@ -260,6 +260,24 @@ class TestParseArguments:
     assert excinfo.value.code == 2
     assert 'invalid int value' in capsys.readouterr().err
 
+  def test_rules_with_yara_engine_is_accepted(self, monkeypatch):
+    monkeypatch.setattr(
+        sys, 'argv',
+        ['threatcheck', '-e', 'yara', '-r', '/tmp/rules', '-f', 's.bin'])
+    args = cli.parse_arguments()
+    assert args.rules == '/tmp/rules'
+
+  def test_rules_with_non_yara_engine_is_rejected(self, monkeypatch, capsys):
+    monkeypatch.setattr(
+        sys, 'argv',
+        ['threatcheck', '-e', 'defender', '-r', '/tmp/rules', '-f', 's.bin'])
+    with pytest.raises(SystemExit) as excinfo:
+      cli.parse_arguments()
+    assert excinfo.value.code == 2
+    err = capsys.readouterr().err
+    assert '--rules is only valid with --engine yara' in err
+    assert 'defender' in err
+
 
 class TestInitializeScanner:
   def test_unknown_engine_raises_value_error(self):
