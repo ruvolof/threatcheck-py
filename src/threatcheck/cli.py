@@ -164,16 +164,18 @@ def parse_arguments():
       default='defender',
       choices=['defender', 'amsi', 'clamav', 'yara'],
       help='Scanning engine (default: defender)')
-  parser.add_argument(
+  source = parser.add_mutually_exclusive_group(required=True)
+  source.add_argument(
       '-f', '--file',
       help='Analyze a file on disk')
-  parser.add_argument(
+  source.add_argument(
       '-u', '--url',
       help='Analyze a file from a URL')
-  parser.add_argument(
+  source.add_argument(
       '-d', '--directory',
       help='Analyze all files in a directory')
-  parser.add_argument('-p', '--pid', help='Analyze a process by PID')
+  source.add_argument(
+      '-p', '--pid', type=int, help='Analyze a process by PID')
   parser.add_argument(
       '-r', '--rules',
       help=('Path to YARA rules directory. Will recursively search for all '
@@ -193,11 +195,6 @@ def parse_arguments():
 def main():
   args = parse_arguments()
 
-  if not (args.directory or args.file or args.url or args.pid):
-    Console.write_error(
-        'Specify either -d, -f, -u or -p as a source. Type --help for more.')
-    sys.exit(1)
-
   try:
     scanner = initialize_scanner(
         args.engine.lower(), args.debug, rules_path=args.rules)
@@ -214,7 +211,7 @@ def main():
   elif args.url:
     file_content = download_file_bytes(args.url)
     results = [scan_file_bytes(scanner, Path(args.url), file_content)]
-  elif args.pid:
-    results = [scan_process(scanner, int(args.pid))]
+  elif args.pid is not None:
+    results = [scan_process(scanner, args.pid)]
 
   print_summary(results)

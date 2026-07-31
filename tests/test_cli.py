@@ -194,10 +194,10 @@ class TestPrintSummary:
 
 class TestParseArguments:
   def test_defaults(self, monkeypatch):
-    monkeypatch.setattr(sys, 'argv', ['threatcheck'])
+    monkeypatch.setattr(sys, 'argv', ['threatcheck', '-f', 'sample.bin'])
     args = cli.parse_arguments()
     assert args.engine == 'defender'
-    assert args.file is None
+    assert args.file == 'sample.bin'
     assert args.url is None
     assert args.directory is None
     assert args.pid is None
@@ -205,17 +205,20 @@ class TestParseArguments:
     assert args.debug is False
 
   def test_engine_normalized_to_lowercase(self, monkeypatch):
-    monkeypatch.setattr(sys, 'argv', ['threatcheck', '--engine', 'YARA'])
+    monkeypatch.setattr(
+        sys, 'argv', ['threatcheck', '--engine', 'YARA', '-f', 'sample.bin'])
     args = cli.parse_arguments()
     assert args.engine == 'yara'
 
   def test_invalid_engine_exits(self, monkeypatch):
-    monkeypatch.setattr(sys, 'argv', ['threatcheck', '--engine', 'bogus'])
+    monkeypatch.setattr(
+        sys, 'argv',
+        ['threatcheck', '--engine', 'bogus', '-f', 'sample.bin'])
     with pytest.raises(SystemExit):
       cli.parse_arguments()
 
   def test_debug_flag(self, monkeypatch):
-    monkeypatch.setattr(sys, 'argv', ['threatcheck', '--debug'])
+    monkeypatch.setattr(sys, 'argv', ['threatcheck', '--debug', '-f', 's.bin'])
     args = cli.parse_arguments()
     assert args.debug is True
 
@@ -224,6 +227,38 @@ class TestParseArguments:
     with pytest.raises(SystemExit) as excinfo:
       cli.parse_arguments()
     assert excinfo.value.code == 0
+
+  def test_no_source_flag_exits(self, monkeypatch, capsys):
+    monkeypatch.setattr(sys, 'argv', ['threatcheck'])
+    with pytest.raises(SystemExit) as excinfo:
+      cli.parse_arguments()
+    assert excinfo.value.code == 2
+    err = capsys.readouterr().err
+    assert 'one of the arguments' in err
+    for flag in ('-f/--file', '-u/--url', '-d/--directory', '-p/--pid'):
+      assert flag in err
+
+  def test_source_flags_are_mutually_exclusive(self, monkeypatch, capsys):
+    monkeypatch.setattr(
+        sys, 'argv', ['threatcheck', '-f', 'a.bin', '-d', '/tmp'])
+    with pytest.raises(SystemExit) as excinfo:
+      cli.parse_arguments()
+    assert excinfo.value.code == 2
+    assert 'not allowed with argument' in capsys.readouterr().err
+
+  def test_pid_parsed_as_int(self, monkeypatch):
+    monkeypatch.setattr(sys, 'argv', ['threatcheck', '-p', '4242'])
+    args = cli.parse_arguments()
+    assert args.pid == 4242
+    assert isinstance(args.pid, int)
+
+  def test_pid_non_integer_exits_with_argparse_error(
+      self, monkeypatch, capsys):
+    monkeypatch.setattr(sys, 'argv', ['threatcheck', '-p', 'notanumber'])
+    with pytest.raises(SystemExit) as excinfo:
+      cli.parse_arguments()
+    assert excinfo.value.code == 2
+    assert 'invalid int value' in capsys.readouterr().err
 
 
 class TestInitializeScanner:
@@ -298,6 +333,7 @@ class TestMainInitFailure:
     with pytest.raises(SystemExit) as excinfo:
       cli.main()
 
-    assert excinfo.value.code == 1
+    # argparse rejects the missing source flag before main() runs and exits 2.
+    assert excinfo.value.code == 2
     assert init_mock.call_count == 0
-    assert 'Specify either' in capsys.readouterr().err
+    assert 'one of the arguments' in capsys.readouterr().err
