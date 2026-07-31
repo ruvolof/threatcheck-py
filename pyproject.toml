@@ -1,10 +1,10 @@
 [build-system]
-requires = ["setuptools>=45", "wheel"]
+requires = ["setuptools>=61", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "threatcheck-py"
-version = "0.3.0"
+dynamic = ["version"]
 description = "Identify AV signatures in files using binary search."
 readme = "README.md"
 requires-python = ">=3.8"
@@ -54,3 +54,6 @@ packages = [
   "threatcheck",
   "threatcheck.scanners",
 ]
+
+[tool.setuptools.dynamic]
+version = {attr = "threatcheck.__version__"}
