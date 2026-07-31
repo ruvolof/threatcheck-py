@@ -78,27 +78,22 @@ def read_file_content(file_path: Path) -> bytes:
     return f.read()
 
 
-def initialize_scanner(engine: str,
-                       debug: bool,
-                       file_bytes: bytes = None,
-                       pid: int = None,
-                       rules_path: str = None):
+def initialize_scanner(engine: str, debug: bool, rules_path: str = None):
   if engine == 'defender':
-    return DefenderScanner(debug=debug, file_bytes=file_bytes, pid=pid)
+    return DefenderScanner(debug=debug)
   elif engine == 'amsi':
-    return AmsiScanner(debug=debug, file_bytes=file_bytes, pid=pid)
+    return AmsiScanner(debug=debug)
   elif engine == 'clamav':
-    return ClamAVScanner(debug=debug, file_bytes=file_bytes, pid=pid)
+    return ClamAVScanner(debug=debug)
   elif engine == 'yara':
-    return YaraScanner(debug=debug, file_bytes=file_bytes, pid=pid, rules_path=rules_path)
+    return YaraScanner(debug=debug, rules_path=rules_path)
   else:
     raise ValueError(f'Unknown engine: {engine}')
 
 
-def scan_process(pid: int, engine: str, debug: bool, rules_path: str = None):
+def scan_process(scanner, pid: int) -> ScanResult:
   try:
-    scanner = initialize_scanner(engine, debug, pid=pid, rules_path=rules_path)
-    result = scanner.analyze()
+    result = scanner.analyze(pid=pid)
     result.file_path = f'Process_{pid}'
     report_result(result)
     return result
@@ -111,15 +106,11 @@ def scan_process(pid: int, engine: str, debug: bool, rules_path: str = None):
     return result
 
 
-def scan_file_bytes(file_path: Path,
-                    file_bytes: bytes,
-                    engine: str,
-                    debug: bool,
-                    rules_path: str = None) -> ScanResult:
+def scan_file_bytes(scanner,
+                    file_path: Path,
+                    file_bytes: bytes) -> ScanResult:
   try:
-    scanner = initialize_scanner(
-        engine, debug, file_bytes=file_bytes, rules_path=rules_path)
-    result = scanner.analyze()
+    result = scanner.analyze(file_bytes=file_bytes)
     result.file_path = file_path
     result.file_size = len(file_bytes)
     report_result(result)
@@ -133,7 +124,7 @@ def scan_file_bytes(file_path: Path,
     return result
 
 
-def process_files(file_list: List[Path], args) -> List[ScanResult]:
+def process_files(scanner, file_list: List[Path]) -> List[ScanResult]:
   results = []
 
   Console.write_output(f'Found {len(file_list)} file(s) to scan')
@@ -141,11 +132,7 @@ def process_files(file_list: List[Path], args) -> List[ScanResult]:
   for file_path in file_list:
     Console.write_output(f'Scanning file: {file_path.name}')
     content = read_file_content(file_path)
-    result = scan_file_bytes(file_path,
-                             content,
-                             args.engine.lower(),
-                             args.debug,
-                             rules_path=args.rules)
+    result = scan_file_bytes(scanner, file_path, content)
     results.append(result)
 
   return results
@@ -165,7 +152,7 @@ def print_summary(results: List[ScanResult]):
         Console.write_threat(f'  - {result.file_path}')
   else:
     Console.write_output('No threats found')
-  
+
 
 def parse_arguments():
   parser = argparse.ArgumentParser(
@@ -206,28 +193,28 @@ def parse_arguments():
 def main():
   args = parse_arguments()
 
-  if args.directory:
-    file_list = list_files_in_directory(Path(args.directory))
-    results = process_files(file_list, args)
-  elif args.file:
-    file_list = [Path(args.file)]
-    results = process_files(file_list, args)
-  elif args.url:
-    file_content = download_file_bytes(args.url)
-    results = [scan_file_bytes(Path(args.url),
-                               file_content,
-                               args.engine.lower(),
-                               args.debug,
-                               rules_path=args.rules)]
-  elif args.pid:
-    results = [
-        scan_process(int(args.pid),
-                     args.engine.lower(),
-                     args.debug,
-                     rules_path=args.rules)]
-  else:
+  if not (args.directory or args.file or args.url or args.pid):
     Console.write_error(
         'Specify either -d, -f, -u or -p as a source. Type --help for more.')
     sys.exit(1)
+
+  try:
+    scanner = initialize_scanner(
+        args.engine.lower(), args.debug, rules_path=args.rules)
+  except Exception as e:
+    Console.write_error(f'Failed to initialize {args.engine} scanner: {e}')
+    sys.exit(1)
+
+  if args.directory:
+    file_list = list_files_in_directory(Path(args.directory))
+    results = process_files(scanner, file_list)
+  elif args.file:
+    file_list = [Path(args.file)]
+    results = process_files(scanner, file_list)
+  elif args.url:
+    file_content = download_file_bytes(args.url)
+    results = [scan_file_bytes(scanner, Path(args.url), file_content)]
+  elif args.pid:
+    results = [scan_process(scanner, int(args.pid))]
 
   print_summary(results)

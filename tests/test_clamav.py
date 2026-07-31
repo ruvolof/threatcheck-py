@@ -24,8 +24,6 @@ class TestParseClamavSignature:
     assert _parse_clamav_signature('') is None
 
   def test_malformed_line_without_colon_is_skipped(self):
-    # A line with "FOUND" but no ": " separator shouldn't crash or return a
-    # bogus signature.
     stdout = 'malformed FOUND\n/tmp/x: Real.Sig FOUND\n'
     assert _parse_clamav_signature(stdout) == 'Real.Sig'
 
@@ -35,23 +33,16 @@ class TestParseClamavSignature:
 
 
 class TestClamAVScannerInit:
-  def test_pid_rejected_before_binary_lookup(self, monkeypatch):
-    # PID guard runs before shutil.which, so this raises even when neither
-    # clamscan nor clamdscan is installed.
-    monkeypatch.setattr(clamav.shutil, 'which', lambda name: None)
-    with pytest.raises(ValueError, match='does not support scanning process'):
-      ClamAVScanner(pid=1)
-
   def test_missing_binaries_raises_runtime_error(self, monkeypatch):
     monkeypatch.setattr(clamav.shutil, 'which', lambda name: None)
     with pytest.raises(RuntimeError, match='ClamAV not found'):
-      ClamAVScanner(file_bytes=b'x')
+      ClamAVScanner()
 
   def test_prefers_clamdscan_when_present(self, monkeypatch):
     def which(name):
       return f'/usr/bin/{name}' if name == 'clamdscan' else None
     monkeypatch.setattr(clamav.shutil, 'which', which)
-    scanner = ClamAVScanner(file_bytes=b'x')
+    scanner = ClamAVScanner()
     assert scanner._uses_clamd is True
     assert scanner.clamscan_path == '/usr/bin/clamdscan'
 
@@ -59,6 +50,15 @@ class TestClamAVScannerInit:
     def which(name):
       return '/usr/bin/clamscan' if name == 'clamscan' else None
     monkeypatch.setattr(clamav.shutil, 'which', which)
-    scanner = ClamAVScanner(file_bytes=b'x')
+    scanner = ClamAVScanner()
     assert scanner._uses_clamd is False
     assert scanner.clamscan_path == '/usr/bin/clamscan'
+
+  def test_analyze_pid_raises_not_implemented(self, monkeypatch):
+    def which(name):
+      return f'/usr/bin/{name}' if name == 'clamdscan' else None
+    monkeypatch.setattr(clamav.shutil, 'which', which)
+    scanner = ClamAVScanner()
+    with pytest.raises(NotImplementedError,
+                       match='Process scanning not implemented'):
+      scanner.analyze(pid=1)

@@ -23,8 +23,8 @@ class YaraMatch:
 
 
 class YaraScanner(Scanner):
-  def __init__(self, file_bytes=None, debug=False, pid=None, rules_path=None):
-    super().__init__(file_bytes=file_bytes, debug=debug, pid=pid)
+  def __init__(self, debug=False, rules_path=None):
+    super().__init__(debug=debug)
 
     if not rules_path:
       raise ValueError('rules_path must be provided for YaraScanner')
@@ -101,10 +101,10 @@ class YaraScanner(Scanner):
 
     return result
 
-  def _start_file_scan(self):
-    matches = self.compiled_rules.match(data=self.file_bytes)
+  def _start_file_scan(self, file_bytes):
+    matches = self.compiled_rules.match(data=file_bytes)
     return self._build_result(matches)
 
-  def _start_process_scan(self):
-    matches = self.compiled_rules.match(pid=int(self.pid))
+  def _start_process_scan(self, pid):
+    matches = self.compiled_rules.match(pid=int(pid))
     return self._build_result(matches)

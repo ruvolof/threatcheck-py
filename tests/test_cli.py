@@ -10,6 +10,23 @@ from threatcheck.scanners.scanner import ScanResult, ScanStatus
 from threatcheck.scanners.yara_scanner import YaraMatch, YaraStringMatch
 
 
+class _StubScanner:
+  def __init__(self, results=None, raise_exc=None):
+    self._results = list(results) if results else []
+    self._raise_exc = raise_exc
+    self.calls = []
+
+  def analyze(self, file_bytes=None, pid=None):
+    self.calls.append({'file_bytes': file_bytes, 'pid': pid})
+    if self._raise_exc:
+      raise self._raise_exc
+    if self._results:
+      return self._results.pop(0)
+    r = ScanResult()
+    r.status = ScanStatus.NO_THREAT_FOUND
+    return r
+
+
 class TestDownloadFileBytes:
   def test_returns_content_on_success(self):
     with patch.object(cli.requests, 'get') as get:
@@ -74,7 +91,6 @@ class TestReportResult:
     assert 'malicious' in out
     assert 'Trojan.Test' in out
     assert '0x5' in out
-    # hex_dump output is on stdout too — 'A' through 'E' as hex.
     assert '41 42 43 44 45' in out
 
   def test_threat_found_without_identification_reports_error(self, capsys):
@@ -84,7 +100,6 @@ class TestReportResult:
     cli.report_result(r)
     captured = capsys.readouterr()
     assert 'malicious' in captured.out
-    # write_error goes to stderr.
     assert "couldn't identify bad bytes" in captured.err
 
   def test_no_threat_found_prints_ok(self, capsys):
@@ -214,12 +229,75 @@ class TestParseArguments:
 class TestInitializeScanner:
   def test_unknown_engine_raises_value_error(self):
     with pytest.raises(ValueError, match='Unknown engine: bogus'):
-      cli.initialize_scanner('bogus', debug=False, file_bytes=b'x')
+      cli.initialize_scanner('bogus', debug=False)
 
   def test_yara_engine_builds_scanner(self, tmp_path):
     (tmp_path / 'r.yar').write_text(
         'rule R { strings: $a = "x" condition: $a }')
     scanner = cli.initialize_scanner(
-        'yara', debug=False, file_bytes=b'x', rules_path=str(tmp_path))
+        'yara', debug=False, rules_path=str(tmp_path))
     from threatcheck.scanners.yara_scanner import YaraScanner
     assert isinstance(scanner, YaraScanner)
+
+
+class TestProcessFiles:
+  def test_scanner_instance_is_reused_across_files(self, tmp_path):
+    (tmp_path / 'a.bin').write_bytes(b'aaa')
+    (tmp_path / 'b.bin').write_bytes(b'bb')
+    files = sorted(tmp_path.iterdir())
+    scanner = _StubScanner()
+
+    cli.process_files(scanner, files)
+
+    assert len(scanner.calls) == 2
+    assert scanner.calls[0]['file_bytes'] == b'aaa'
+    assert scanner.calls[1]['file_bytes'] == b'bb'
+
+  def test_scan_error_produces_error_result_without_stopping(self, tmp_path):
+    (tmp_path / 'a.bin').write_bytes(b'x')
+    (tmp_path / 'b.bin').write_bytes(b'y')
+    files = sorted(tmp_path.iterdir())
+    scanner = _StubScanner(raise_exc=RuntimeError('boom'))
+
+    results = cli.process_files(scanner, files)
+
+    assert len(results) == 2
+    assert all(r.status == ScanStatus.ERROR for r in results)
+    assert all(r.error_message == 'boom' for r in results)
+
+
+class TestMainInitFailure:
+  def test_scanner_init_failure_exits_without_scanning(
+      self, monkeypatch, capsys, tmp_path):
+    (tmp_path / 'a.bin').write_bytes(b'x')
+    (tmp_path / 'b.bin').write_bytes(b'y')
+
+    monkeypatch.setattr(
+        sys, 'argv',
+        ['threatcheck', '-e', 'amsi', '-d', str(tmp_path)])
+    monkeypatch.setattr(
+        cli, 'initialize_scanner',
+        MagicMock(side_effect=RuntimeError('AMSI unavailable')))
+
+    with pytest.raises(SystemExit) as excinfo:
+      cli.main()
+
+    assert excinfo.value.code == 1
+    err = capsys.readouterr().err
+    assert 'Failed to initialize amsi scanner' in err
+    assert 'AMSI unavailable' in err
+    # Init error printed once, not per file.
+    assert err.count('AMSI unavailable') == 1
+
+  def test_no_source_flag_exits_before_scanner_init(
+      self, monkeypatch, capsys):
+    monkeypatch.setattr(sys, 'argv', ['threatcheck'])
+    init_mock = MagicMock()
+    monkeypatch.setattr(cli, 'initialize_scanner', init_mock)
+
+    with pytest.raises(SystemExit) as excinfo:
+      cli.main()
+
+    assert excinfo.value.code == 1
+    assert init_mock.call_count == 0
+    assert 'Specify either' in capsys.readouterr().err

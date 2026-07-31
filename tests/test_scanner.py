@@ -6,23 +6,27 @@ from threatcheck.scanners.scanner import Scanner, ScanResult, ScanStatus
 
 
 class _FakeScanner(Scanner):
-  def __init__(self, file_bytes=None, pid=None, raise_in_scan=False):
-    super().__init__(file_bytes=file_bytes, pid=pid)
+  def __init__(self, raise_in_scan=False):
+    super().__init__()
     self.raise_in_scan = raise_in_scan
     self.file_scan_called = False
     self.process_scan_called = False
     self.recorded_temp_dir = None
+    self.recorded_file_bytes = None
+    self.recorded_pid = None
 
-  def _start_file_scan(self):
+  def _start_file_scan(self, file_bytes):
     self.file_scan_called = True
     self.recorded_temp_dir = self.temp_dir
+    self.recorded_file_bytes = file_bytes
     if self.raise_in_scan:
       raise RuntimeError('scan failure')
     return ScanResult()
 
-  def _start_process_scan(self):
+  def _start_process_scan(self, pid):
     self.process_scan_called = True
     self.recorded_temp_dir = self.temp_dir
+    self.recorded_pid = pid
     return ScanResult()
 
 
@@ -64,60 +68,69 @@ class TestScanResult:
     assert r.error_message is None
 
 
-class TestScannerInit:
+class TestScannerAnalyze:
   def test_neither_file_bytes_nor_pid_raises(self):
+    s = _FakeScanner()
     with pytest.raises(ValueError, match='file_bytes or pid must be provided'):
-      _FakeScanner()
+      s.analyze()
 
   def test_both_file_bytes_and_pid_raises(self):
+    s = _FakeScanner()
     with pytest.raises(ValueError, match='cannot be provided together'):
-      _FakeScanner(file_bytes=b'x', pid=1)
+      s.analyze(file_bytes=b'x', pid=1)
 
-  def test_file_bytes_only_ok(self):
-    s = _FakeScanner(file_bytes=b'x')
-    assert s.file_bytes == b'x'
-    assert s.pid is None
-
-  def test_pid_only_ok(self):
-    s = _FakeScanner(pid=42)
-    assert s.pid == 42
-    assert s.file_bytes is None
-
-
-class TestScannerAnalyze:
   def test_dispatches_to_file_scan(self):
-    s = _FakeScanner(file_bytes=b'x')
-    s.analyze()
+    s = _FakeScanner()
+    s.analyze(file_bytes=b'x')
     assert s.file_scan_called is True
     assert s.process_scan_called is False
+    assert s.recorded_file_bytes == b'x'
 
   def test_dispatches_to_process_scan(self):
-    s = _FakeScanner(pid=1)
-    s.analyze()
+    s = _FakeScanner()
+    s.analyze(pid=1)
     assert s.process_scan_called is True
     assert s.file_scan_called is False
+    assert s.recorded_pid == 1
+
+  def test_pid_zero_is_accepted(self):
+    s = _FakeScanner()
+    s.analyze(pid=0)
+    assert s.process_scan_called is True
+    assert s.recorded_pid == 0
+
+  def test_scanner_can_be_reused_across_calls(self):
+    s = _FakeScanner()
+    s.analyze(file_bytes=b'a')
+    first_temp = s.recorded_temp_dir
+    s.analyze(file_bytes=b'b')
+    second_temp = s.recorded_temp_dir
+    assert first_temp != second_temp
+    assert not os.path.exists(first_temp)
+    assert not os.path.exists(second_temp)
+    assert s.recorded_file_bytes == b'b'
 
   def test_creates_and_cleans_up_temp_dir(self):
-    s = _FakeScanner(file_bytes=b'x')
-    s.analyze()
+    s = _FakeScanner()
+    s.analyze(file_bytes=b'x')
     assert s.recorded_temp_dir is not None
     assert not os.path.exists(s.recorded_temp_dir)
 
   def test_cleans_up_temp_dir_even_if_scan_raises(self):
-    s = _FakeScanner(file_bytes=b'x', raise_in_scan=True)
+    s = _FakeScanner(raise_in_scan=True)
     with pytest.raises(RuntimeError, match='scan failure'):
-      s.analyze()
+      s.analyze(file_bytes=b'x')
     assert s.recorded_temp_dir is not None
     assert not os.path.exists(s.recorded_temp_dir)
 
   def test_cleanup_handles_leftover_files_in_temp_dir(self):
     class _LeavesFile(_FakeScanner):
-      def _start_file_scan(self):
+      def _start_file_scan(self, file_bytes):
         self.recorded_temp_dir = self.temp_dir
         with open(os.path.join(self.temp_dir, 'trash'), 'wb') as f:
           f.write(b'garbage')
         return ScanResult()
 
-    s = _LeavesFile(file_bytes=b'x')
-    s.analyze()
+    s = _LeavesFile()
+    s.analyze(file_bytes=b'x')
     assert not os.path.exists(s.recorded_temp_dir)

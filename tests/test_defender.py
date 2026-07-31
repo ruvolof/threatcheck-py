@@ -42,13 +42,8 @@ class TestParseDefenderSignature:
 
 
 class TestDefenderScannerInit:
-  def test_pid_rejected_on_any_os(self):
-    # PID guard is platform-independent and runs before the win32 check.
-    with pytest.raises(ValueError, match='does not support scanning process'):
-      DefenderScanner(pid=1)
-
   @pytest.mark.skipif(sys.platform == 'win32',
                       reason='Non-Windows platform check only')
   def test_non_windows_raises_runtime_error(self):
     with pytest.raises(RuntimeError, match='requires Windows'):
-      DefenderScanner(file_bytes=b'x')
+      DefenderScanner()

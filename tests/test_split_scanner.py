@@ -14,8 +14,8 @@ class _ThresholdSplitScanner(SplitScanner):
 
   SIGNATURE = 'FAKE_SIG'
 
-  def __init__(self, file_bytes, threshold, pid=None):
-    super().__init__(file_bytes=file_bytes, debug=False, pid=pid)
+  def __init__(self, threshold):
+    super().__init__(debug=False)
     self.threshold = threshold
     self.scan_count = 0
 
@@ -39,8 +39,8 @@ def _make_file(size):
 class TestCleanFile:
   def test_never_triggers_returns_no_threat(self):
     file_bytes = _make_file(1000)
-    scanner = _ThresholdSplitScanner(file_bytes, threshold=10**9)
-    result = scanner.analyze()
+    scanner = _ThresholdSplitScanner(threshold=10**9)
+    result = scanner.analyze(file_bytes=file_bytes)
     assert result.status == ScanStatus.NO_THREAT_FOUND
     assert result.identified is False
     assert result.end_offset is None
@@ -63,14 +63,12 @@ class TestConvergence:
   def test_converges_to_within_two_bytes_of_threshold(
       self, file_size, threshold):
     file_bytes = _make_file(file_size)
-    scanner = _ThresholdSplitScanner(file_bytes, threshold=threshold)
-    result = scanner.analyze()
+    scanner = _ThresholdSplitScanner(threshold=threshold)
+    result = scanner.analyze(file_bytes=file_bytes)
 
     assert result.status == ScanStatus.THREAT_FOUND
     assert result.identified is True
     assert result.end_offset in (threshold + 1, threshold + 2)
-    # offending_bytes should end exactly at end_offset and contain the last
-    # min(end_offset, 256) bytes.
     expected_len = min(result.end_offset, 256)
     assert len(result.offending_bytes) == expected_len
     assert result.offending_bytes == file_bytes[
@@ -78,49 +76,49 @@ class TestConvergence:
 
   def test_signature_captured_from_initial_scan(self):
     file_bytes = _make_file(500)
-    scanner = _ThresholdSplitScanner(file_bytes, threshold=100)
-    result = scanner.analyze()
+    scanner = _ThresholdSplitScanner(threshold=100)
+    result = scanner.analyze(file_bytes=file_bytes)
     assert result.signature == _ThresholdSplitScanner.SIGNATURE
 
   def test_offending_bytes_capped_at_256(self):
-    # Signature spans much more than 256 bytes; algorithm caps the reported
-    # offending_bytes at the last 256 bytes.
     file_bytes = _make_file(4000)
-    scanner = _ThresholdSplitScanner(file_bytes, threshold=1000)
-    result = scanner.analyze()
+    scanner = _ThresholdSplitScanner(threshold=1000)
+    result = scanner.analyze(file_bytes=file_bytes)
     assert result.end_offset in (1001, 1002)
     assert len(result.offending_bytes) == 256
     assert result.offending_bytes == file_bytes[
         result.end_offset - 256:result.end_offset]
 
   def test_scan_count_is_logarithmic_not_linear(self):
-    # Sanity: the algorithm must not scan every byte position. For a 100kB
-    # file we should be well under a couple hundred scans.
     file_bytes = _make_file(100_000)
-    scanner = _ThresholdSplitScanner(file_bytes, threshold=50_000)
-    scanner.analyze()
+    scanner = _ThresholdSplitScanner(threshold=50_000)
+    scanner.analyze(file_bytes=file_bytes)
     assert scanner.scan_count < 200
+
+  def test_scanner_reused_across_files(self):
+    scanner = _ThresholdSplitScanner(threshold=100)
+    first = scanner.analyze(file_bytes=_make_file(500))
+    second = scanner.analyze(file_bytes=_make_file(50))
+    assert first.status == ScanStatus.THREAT_FOUND
+    assert second.status == ScanStatus.NO_THREAT_FOUND
 
 
 class TestBoundaryBehavior:
   def test_threat_at_end_of_file_exits_without_identification(self):
     # When the signature only triggers on the full file, the _overshot path
-    # terminates the loop without populating end_offset. This documents the
-    # current algorithm's limitation — status is still THREAT_FOUND and the
-    # signature is reported, but identified stays False.
+    # terminates the loop without populating end_offset.
     file_bytes = _make_file(200)
-    scanner = _ThresholdSplitScanner(file_bytes, threshold=199)
-    result = scanner.analyze()
+    scanner = _ThresholdSplitScanner(threshold=199)
+    result = scanner.analyze(file_bytes=file_bytes)
     assert result.status == ScanStatus.THREAT_FOUND
     assert result.signature == _ThresholdSplitScanner.SIGNATURE
     assert result.identified is False
     assert result.end_offset is None
 
   def test_algorithm_terminates_on_tiny_file(self):
-    # 2-byte file with threat on any non-empty content.
     file_bytes = _make_file(2)
-    scanner = _ThresholdSplitScanner(file_bytes, threshold=0)
-    result = scanner.analyze()
+    scanner = _ThresholdSplitScanner(threshold=0)
+    result = scanner.analyze(file_bytes=file_bytes)
     assert result.status == ScanStatus.THREAT_FOUND
     assert result.identified is True
     assert result.end_offset == 1
@@ -129,7 +127,7 @@ class TestBoundaryBehavior:
 
 class TestProcessScan:
   def test_process_scan_raises_not_implemented(self):
-    scanner = _ThresholdSplitScanner(file_bytes=None, threshold=0, pid=42)
+    scanner = _ThresholdSplitScanner(threshold=0)
     with pytest.raises(NotImplementedError,
                        match='Process scanning not implemented'):
-      scanner.analyze()
+      scanner.analyze(pid=42)

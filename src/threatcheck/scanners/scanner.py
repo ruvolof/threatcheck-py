@@ -34,28 +34,25 @@ class ScanResult:
     return self.status in (ScanStatus.NO_THREAT_FOUND, ScanStatus.THREAT_FOUND)
 
 class Scanner(ABC):
-  def __init__(self, file_bytes=None, debug=False, pid=None):
-    if not file_bytes and not pid:
-      raise ValueError('file_bytes or pid must be provided')
-    if file_bytes and pid:
-      raise ValueError('file_bytes and pid cannot be provided together')
-
-    self.file_bytes = file_bytes
+  def __init__(self, debug=False):
     self.debug = debug
     self.temp_dir = None
-    self.pid = pid
 
-  def analyze(self):
+  def analyze(self, file_bytes=None, pid=None):
     """Starts data analysis on either process memory or file bytes."""
+    if file_bytes is None and pid is None:
+      raise ValueError('file_bytes or pid must be provided')
+    if file_bytes is not None and pid is not None:
+      raise ValueError('file_bytes and pid cannot be provided together')
+
     self.temp_dir = tempfile.mkdtemp()
     try:
-      if self.file_bytes:
-        return self._start_file_scan()
-      elif self.pid:
-        return self._start_process_scan()
+      if file_bytes is not None:
+        return self._start_file_scan(file_bytes)
+      return self._start_process_scan(pid)
     finally:
       self._cleanup_temp_files()
-  
+
   def _cleanup_temp_files(self):
     """Removes temporary files created during analysis."""
     for file in Path(self.temp_dir).iterdir():
@@ -63,20 +60,20 @@ class Scanner(ABC):
         os.remove(file)
       except:
         Console.write_error(f'Failed to remove temporary file: {file}')
-    
+
     try:
       os.rmdir(self.temp_dir)
     except:
       Console.write_error(
           f'Failed to remove temporary directory: {self.temp_dir}')
-  
+
   @abstractmethod
-  def _start_file_scan(self):
+  def _start_file_scan(self, file_bytes):
     """Subclasses implement their own logic to scan files"""
     pass
 
   @abstractmethod
-  def _start_process_scan(self):
+  def _start_process_scan(self, pid):
     """Subclasses implement their own logic to scan process memory"""
     pass
-  
+

@@ -5,13 +5,10 @@ from threatcheck.console import Console
 
 
 class SplitScanner(Scanner):
-  def __init__(self, debug=False, file_bytes=None, pid=None):
-    super().__init__(file_bytes=file_bytes, debug=debug, pid=pid)
-
-  def _start_file_scan(self):
+  def _start_file_scan(self, file_bytes):
     """Analyze file bytes with binary splitting"""
     result = ScanResult()
-    initial_result = self._scan_bytes(self.file_bytes, get_sig=True)
+    initial_result = self._scan_bytes(file_bytes, get_sig=True)
 
     if initial_result.status != ScanStatus.THREAT_FOUND:
       result.status = ScanStatus.NO_THREAT_FOUND
@@ -19,10 +16,10 @@ class SplitScanner(Scanner):
 
     result.status = ScanStatus.THREAT_FOUND
     result.signature = initial_result.signature
-    self._binary_split_loop(result)
+    self._binary_split_loop(file_bytes, result)
     return result
 
-  def _start_process_scan(self):
+  def _start_process_scan(self, pid):
     """Analyze process memory with binary splitting"""
     raise NotImplementedError(
         'Process scanning not implemented for split scanners')
@@ -67,7 +64,7 @@ class SplitScanner(Scanner):
     complete = new_size == len(original_array) - 1
     return original_array[:new_size], complete
 
-  def _binary_split_loop(self, result):
+  def _binary_split_loop(self, file_bytes, result):
     """Common binary splitting logic.
 
     Searches the exact bytes where the signature ends by keeping track of the
@@ -75,9 +72,9 @@ class SplitScanner(Scanner):
     """
     if self.debug:
       Console.write_debug(
-          f'Size: {len(self.file_bytes)} bytes. Searching for signature.')
+          f'Size: {len(file_bytes)} bytes. Searching for signature.')
 
-    split_array = self.file_bytes[:len(self.file_bytes) // 2]
+    split_array = file_bytes[:len(file_bytes) // 2]
     last_good = 0
     complete = False
 
@@ -99,5 +96,4 @@ class SplitScanner(Scanner):
 
         last_good = len(split_array)
         split_array, complete = self._overshot(
-            self.file_bytes, len(split_array))
-
+            file_bytes, len(split_array))

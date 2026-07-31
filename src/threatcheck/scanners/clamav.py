@@ -26,16 +26,11 @@ def _parse_clamav_signature(stdout):
 
 
 class ClamAVScanner(SplitScanner):
-  def __init__(self, file_bytes=None, debug=False, pid=None):
-    super().__init__(file_bytes=file_bytes, debug=debug, pid=pid)
-
-    if self.pid:
-      raise ValueError(
-          'ClamAV scanner does not support scanning process memory')
+  def __init__(self, debug=False):
+    super().__init__(debug=debug)
 
     self._uses_clamd = False
-    
-    # Check if clamscan is available
+
     if shutil.which('clamdscan'):
       self.clamscan_path = shutil.which('clamdscan')
       self._uses_clamd = True
@@ -47,7 +42,7 @@ class ClamAVScanner(SplitScanner):
     if not self._uses_clamd:
       Console.write_debug(
           'Using clamscan. Install clamav-daemon for better performance')
-  
+
   def _scan_bytes(self, data, get_sig=False) -> ScanResult:
     """Scan a data split for threats"""
     # ClamAV needs to scan from disk, not memory.
@@ -58,16 +53,16 @@ class ClamAVScanner(SplitScanner):
       # clamav-daemon runs as clamav, making test file readable by all
       os.chmod(self.temp_dir, 0o755)
       os.chmod(testfile_path, 0o755)
-    
+
     return self._scan_file(testfile_path, get_sig=get_sig)
 
   def _scan_file(self, file_path, get_sig=False) -> ScanResult:
     result = ScanResult()
-    
+
     if not os.path.exists(file_path):
       result.status = ScanStatus.FILE_NOT_FOUND
       return result
-    
+
     try:
       cmd = [
         self.clamscan_path,
@@ -75,13 +70,13 @@ class ClamAVScanner(SplitScanner):
         '--infected',
         file_path
       ]
-      
+
       process = subprocess.Popen(
           cmd,
           stdout=subprocess.PIPE,
           stderr=subprocess.PIPE
       )
-      
+
       try:
         stdout, stderr = process.communicate(timeout=30)
       except subprocess.TimeoutExpired:
@@ -101,11 +96,10 @@ class ClamAVScanner(SplitScanner):
               stdout.decode('utf-8', errors='ignore'))
       else:
         result.status = ScanStatus.ERROR
-      
+
       return result
-    
+
     except Exception as e:
       Console.write_error(f'Error scanning file: {e}')
       result.status = ScanStatus.ERROR
       return result
-
