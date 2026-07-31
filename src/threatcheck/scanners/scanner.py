@@ -58,14 +58,14 @@ class Scanner(ABC):
     for file in Path(self.temp_dir).iterdir():
       try:
         os.remove(file)
-      except:
-        Console.write_error(f'Failed to remove temporary file: {file}')
+      except OSError as e:
+        Console.write_error(f'Failed to remove temporary file {file}: {e}')
 
     try:
       os.rmdir(self.temp_dir)
-    except:
+    except OSError as e:
       Console.write_error(
-          f'Failed to remove temporary directory: {self.temp_dir}')
+          f'Failed to remove temporary directory {self.temp_dir}: {e}')
 
   @abstractmethod
   def _start_file_scan(self, file_bytes):

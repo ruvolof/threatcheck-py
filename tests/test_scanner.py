@@ -134,3 +134,25 @@ class TestScannerAnalyze:
     s = _LeavesFile()
     s.analyze(file_bytes=b'x')
     assert not os.path.exists(s.recorded_temp_dir)
+
+  def test_keyboard_interrupt_from_scan_is_not_swallowed_by_cleanup(self):
+    class _Interrupter(_FakeScanner):
+      def _start_file_scan(self, file_bytes):
+        self.recorded_temp_dir = self.temp_dir
+        raise KeyboardInterrupt
+
+    s = _Interrupter()
+    with pytest.raises(KeyboardInterrupt):
+      s.analyze(file_bytes=b'x')
+    assert not os.path.exists(s.recorded_temp_dir)
+
+  def test_cleanup_failure_reports_reason(self, monkeypatch, capsys):
+    def deny(path):
+      raise PermissionError('denied')
+
+    s = _FakeScanner()
+    monkeypatch.setattr(os, 'rmdir', deny)
+    s.analyze(file_bytes=b'x')
+    err = capsys.readouterr().err
+    assert 'Failed to remove temporary directory' in err
+    assert 'denied' in err
