@@ -1,4 +1,4 @@
-__version__ = '0.3.1'
+__version__ = '0.4.0'
 __author__ = 'Werebug security@werebug.com'
 __license__ = 'GPL-3.0'
 
