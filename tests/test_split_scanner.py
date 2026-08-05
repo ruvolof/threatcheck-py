@@ -131,3 +131,49 @@ class TestProcessScan:
     with pytest.raises(NotImplementedError,
                        match='Process scanning not implemented'):
       scanner.analyze(pid=42)
+
+
+class TestMemoryviewSplitting:
+  """The split loop must slice via memoryview, not copy bytes each iteration."""
+
+  class _TypeRecordingScanner(_ThresholdSplitScanner):
+    def __init__(self, threshold):
+      super().__init__(threshold=threshold)
+      self.observed_types = []
+
+    def _scan_bytes(self, data, get_sig=False):
+      self.observed_types.append(type(data))
+      return super()._scan_bytes(data, get_sig=get_sig)
+
+  def test_scan_bytes_receives_memoryview_not_bytes(self):
+    scanner = self._TypeRecordingScanner(threshold=1000)
+    scanner.analyze(file_bytes=_make_file(10_000))
+    assert scanner.observed_types, 'scanner was never invoked'
+    assert all(t is memoryview for t in scanner.observed_types), (
+        f'expected all memoryview, saw: {set(scanner.observed_types)}')
+
+  def test_offending_bytes_is_bytes_type(self):
+    # A memoryview would pin the whole payload alive and isn't cleanly
+    # serializable; consumers need a plain bytes they can retain.
+    file_bytes = _make_file(500)
+    scanner = _ThresholdSplitScanner(threshold=100)
+    result = scanner.analyze(file_bytes=file_bytes)
+    assert result.identified is True
+    assert type(result.offending_bytes) is bytes
+
+  def test_split_loop_does_not_scale_allocations_with_payload_size(self):
+    # With bytes slicing, peak allocation grows with payload size
+    # (roughly payload bytes per iteration × log2(N) iterations).
+    # With memoryview slicing it stays ~constant.
+    import tracemalloc
+
+    file_bytes = _make_file(4 * 1024 * 1024)
+    scanner = _ThresholdSplitScanner(threshold=2 * 1024 * 1024)
+
+    tracemalloc.start()
+    tracemalloc.reset_peak()
+    scanner.analyze(file_bytes=file_bytes)
+    _, peak = tracemalloc.get_traced_memory()
+    tracemalloc.stop()
+
+    assert peak < 512 * 1024, f'peak allocation was {peak} bytes'

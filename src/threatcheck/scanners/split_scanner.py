@@ -8,7 +8,8 @@ class SplitScanner(Scanner):
   def _start_file_scan(self, file_bytes):
     """Analyze file bytes with binary splitting"""
     result = ScanResult()
-    initial_result = self._scan_bytes(file_bytes, get_sig=True)
+    view = memoryview(file_bytes)
+    initial_result = self._scan_bytes(view, get_sig=True)
 
     if initial_result.status != ScanStatus.THREAT_FOUND:
       result.status = ScanStatus.NO_THREAT_FOUND
@@ -16,7 +17,7 @@ class SplitScanner(Scanner):
 
     result.status = ScanStatus.THREAT_FOUND
     result.signature = initial_result.signature
-    self._binary_split_loop(file_bytes, result)
+    self._binary_split_loop(view, result)
     return result
 
   def _start_process_scan(self, pid):
@@ -50,7 +51,7 @@ class SplitScanner(Scanner):
     if len(original_array) == split_size + 1:
       offending_size = min(len(original_array), 256)
       result.end_offset = len(original_array)
-      result.offending_bytes = original_array[-offending_size:]
+      result.offending_bytes = bytes(original_array[-offending_size:])
       result.identified = True
       complete = True
 
