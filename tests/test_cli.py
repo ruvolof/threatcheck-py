@@ -1,3 +1,4 @@
+import argparse
 import sys
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -281,16 +282,21 @@ class TestParseArguments:
 
 class TestInitializeScanner:
   def test_unknown_engine_raises_value_error(self):
+    args = argparse.Namespace(debug=False, rules=None)
     with pytest.raises(ValueError, match='Unknown engine: bogus'):
-      cli.initialize_scanner('bogus', debug=False)
+      cli.initialize_scanner('bogus', args)
 
   def test_yara_engine_builds_scanner(self, tmp_path):
     (tmp_path / 'r.yar').write_text(
         'rule R { strings: $a = "x" condition: $a }')
-    scanner = cli.initialize_scanner(
-        'yara', debug=False, rules_path=str(tmp_path))
+    args = argparse.Namespace(debug=False, rules=str(tmp_path))
+    scanner = cli.initialize_scanner('yara', args)
     from threatcheck.scanners.yara_scanner import YaraScanner
     assert isinstance(scanner, YaraScanner)
+
+  def test_registry_covers_all_engine_choices(self):
+    parser_choices = {'defender', 'amsi', 'clamav', 'yara'}
+    assert set(cli.ENGINES) == parser_choices
 
 
 class TestProcessFiles:

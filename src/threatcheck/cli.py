@@ -78,17 +78,20 @@ def read_file_content(file_path: Path) -> bytes:
     return f.read()
 
 
-def initialize_scanner(engine: str, debug: bool, rules_path: str = None):
-  if engine == 'defender':
-    return DefenderScanner(debug=debug)
-  elif engine == 'amsi':
-    return AmsiScanner(debug=debug)
-  elif engine == 'clamav':
-    return ClamAVScanner(debug=debug)
-  elif engine == 'yara':
-    return YaraScanner(debug=debug, rules_path=rules_path)
-  else:
+ENGINES = {
+    'defender': (DefenderScanner, lambda args: {}),
+    'amsi': (AmsiScanner, lambda args: {}),
+    'clamav': (ClamAVScanner, lambda args: {}),
+    'yara': (YaraScanner, lambda args: {'rules_path': args.rules}),
+}
+
+
+def initialize_scanner(engine: str, args):
+  try:
+    cls, extra_kwargs = ENGINES[engine]
+  except KeyError:
     raise ValueError(f'Unknown engine: {engine}')
+  return cls(debug=args.debug, **extra_kwargs(args))
 
 
 def scan_process(scanner, pid: int) -> ScanResult:
@@ -162,7 +165,7 @@ def parse_arguments():
       '-e', '--engine',
       type=str.lower,
       default='defender',
-      choices=['defender', 'amsi', 'clamav', 'yara'],
+      choices=sorted(ENGINES),
       help='Scanning engine (default: defender)')
   source = parser.add_mutually_exclusive_group(required=True)
   source.add_argument(
@@ -202,8 +205,7 @@ def main():
   args = parse_arguments()
 
   try:
-    scanner = initialize_scanner(
-        args.engine.lower(), args.debug, rules_path=args.rules)
+    scanner = initialize_scanner(args.engine, args)
   except Exception as e:
     Console.write_error(f'Failed to initialize {args.engine} scanner: {e}')
     sys.exit(1)
